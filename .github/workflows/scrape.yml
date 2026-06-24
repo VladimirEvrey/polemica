@@ -1,0 +1,114 @@
+name: Scrape & Publish Stats
+
+on:
+  # Запуск по расписанию — каждый день в 6:00 UTC
+  schedule:
+    - cron: "0 6 * * *"
+
+  # Ручной запуск из вкладки Actions
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Режим сбора данных"
+        required: true
+        default: "my"
+        type: choice
+        options:
+          - my       # только свои игры (~5 мин)
+          - all      # все матчи подряд (долго)
+      count:
+        description: "Сколько матчей парсить (только для режима all)"
+        required: false
+        default: "5000"
+
+# Разрешаем писать в GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Не запускаем параллельно — одна задача за раз
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  scrape-and-publish:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # ── 1. Получаем код ──
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Python ──
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Зависимости ──
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Создаём .env из GitHub Secrets ──
+      - name: Create .env
+        run: |
+          cat <<EOF > .env
+          MY_USER_ID=${{ secrets.MY_USER_ID }}
+          DB_PATH=data/players.db
+          HTML_OUT=data/stats.html
+          DELAY=0.3
+          SCRAPE_COUNT=${{ github.event.inputs.count || '5000' }}
+          EOF
+
+      # ── 5. Создаём папку data ──
+      - name: Prepare data dir
+        run: mkdir -p data
+
+      # ── 6. Скрапим ──
+      - name: Scrape data
+        run: |
+          MODE=${{ github.event.inputs.mode || 'my' }}
+          if [ "$MODE" = "all" ]; then
+            python scraper.py --mode all \
+              --last ${{ secrets.LAST_MATCH_ID || '591399' }} \
+              --count ${{ github.event.inputs.count || '5000' }} \
+              --db data/players.db
+          else
+            python scraper.py --mode my \
+              --user-id ${{ secrets.MY_USER_ID }} \
+              --db data/players.db
+          fi
+
+      # ── 7. Генерируем HTML ──
+      - name: Generate dashboard
+        run: |
+          python dashboard.py \
+            --db data/players.db \
+            --user-id ${{ secrets.MY_USER_ID }} \
+            --out data/stats.html
+
+      # ── 8. Копируем index.html для GitHub Pages ──
+      - name: Prepare Pages output
+        run: |
+          mkdir -p _site
+          cp data/stats.html _site/index.html
+
+      # ── 9. Публикуем на GitHub Pages ──
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

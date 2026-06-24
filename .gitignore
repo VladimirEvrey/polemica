@@ -1,0 +1,23 @@
+# Окружение
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# База данных (большая, не коммитить)
+data/*.db
+data/*.json
+data/*.csv
+
+# HTML генерируется локально
+data/stats.html
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
