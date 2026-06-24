@@ -212,6 +212,10 @@ def mode_all_matches(last_match_id=591399, count=10000, db_path="players.db"):
     done = {row[0] for row in conn.execute("SELECT match_id FROM matches WHERE parsed=1")}
     print(f"Уже в базе: {len(done)} матчей")
 
+    if done:
+        last_match_id = min(done) - 1
+        print(f"Продолжаем с match_id={last_match_id} (на основе уже собранных данных)")
+
     start = last_match_id
     end   = max(1, last_match_id - count)
     ids   = [i for i in range(start, end, -1) if i not in done]

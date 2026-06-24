@@ -21,9 +21,9 @@ on:
         required: false
         default: "5000"
 
-# Разрешаем писать в GitHub Pages
+# Разрешаем писать в репозиторий (коммит БД) и в GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -86,7 +86,16 @@ jobs:
               --db data/players.db
           fi
 
-      # ── 7. Генерируем HTML ──
+      # ── 7. Коммитим обновлённую БД, чтобы данные копились между запусками ──
+      - name: Commit updated database
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/players.db
+          git diff --staged --quiet || git commit -m "chore: update players.db"
+          git push
+
+      # ── 8. Генерируем HTML ──
       - name: Generate dashboard
         run: |
           python dashboard.py \
@@ -94,13 +103,13 @@ jobs:
             --user-id ${{ secrets.MY_USER_ID }} \
             --out data/stats.html
 
-      # ── 8. Копируем index.html для GitHub Pages ──
+      # ── 9. Копируем index.html для GitHub Pages ──
       - name: Prepare Pages output
         run: |
           mkdir -p _site
           cp data/stats.html _site/index.html
 
-      # ── 9. Публикуем на GitHub Pages ──
+      # ── 10. Публикуем на GitHub Pages ──
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
