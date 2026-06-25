@@ -32,13 +32,13 @@ Polemica Game — Full Data Scraper
 import argparse
 import json
 import os
+import re
 import sqlite3
 import time
 import csv
 from collections import defaultdict
 
 import requests
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 BASE_URL = "https://polemicagame.com"
@@ -117,8 +117,11 @@ def save_match(conn, match_id, player_ids):
 # ПАРСИНГ МАТЧА
 # ─────────────────────────────────────────────
 
+GAME_DATA_RE = re.compile(r":game-data='(\{.*?\})'\s*\n\s*:user=", re.DOTALL)
+
+
 def parse_match(match_id):
-    """Возвращает список (user_id, username) из HTML страницы матча."""
+    """Возвращает список (user_id, username) из JSON game-data на странице матча."""
     url = f"{BASE_URL}/match/{match_id}"
     try:
         r = session.get(url, timeout=10)
@@ -128,18 +131,21 @@ def parse_match(match_id):
     except Exception:
         return []
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    m = GAME_DATA_RE.search(r.text)
+    if not m:
+        return []
+
+    try:
+        game_data = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return []
+
     players = {}
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "/profile/" in href:
-            try:
-                uid = int(href.split("/profile/")[1].split("/")[0].split("?")[0])
-                name = a.get_text(strip=True)
-                if uid and name and uid not in players:
-                    players[uid] = name
-            except (ValueError, IndexError):
-                continue
+    for p in game_data.get("players", []):
+        uid = p.get("id")
+        name = p.get("username")
+        if uid and name and uid not in players:
+            players[uid] = name
     return list(players.items())   # [(uid, name), ...]
 
 
